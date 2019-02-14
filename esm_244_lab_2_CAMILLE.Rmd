@@ -1,0 +1,178 @@
+---
+title: "ESM244_lab_1_CAMILLE"
+author: "Camille Herrera"
+date: "January 17, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Attach packages
+```{r}
+
+library(tidyverse)
+library(janitor)
+library(MASS)
+library(ggrepel)
+library(RColorBrewer)
+library(factoextra)
+library(ggbiplot)
+library(shinythemes)
+
+```
+
+If you want to override (set) a function manually throughout an entire workspace, you can assign the function name explicityly
+
+```{r}
+
+select <- dplyr::select
+
+# or can just use "dplyr::select" every time you want to use it instead of a general overide
+
+```
+
+###1. Ordinal logistic regression for political party affiliation by ethnicity, age, sex
+
+```{r}
+
+pol_party <- read_csv("pol_party.csv") %>% 
+  clean_names() %>% # janitor function for snake case
+  select(participant_id:read_carefully)
+
+pol_df <- pol_party %>% 
+  select(birth_year, gender, ethnicity, political_party) %>% 
+  filter(birth_year > 1900, political_party != "NA", political_party <= 7) %>% 
+  mutate(age = 2016 - birth_year)
+
+# For political party: 1 = very liberal, 4 = moderate, 7 = very conservative
+
+# Coerce to factors (including ordered factor for the ranking of political party)
+
+pol_df$political_party <- factor(pol_df$political_party, ordered = TRUE, levels = c("1","2","3","4","5","6","7")) # Check class and levels to ensure
+
+# Then update the gender and ethnicity variables to factors (unordered)
+
+pol_df$ethnicity <- factor(pol_df$ethnicity)
+pol_df$gender <- factor(pol_df$gender) 
+
+# Then we can run ordinal logistic regression, but we should do some visualization first.
+
+```
+ 
+Political Party: 1 is very liberal and 7 is very conservative
+ 
+Basic data exploration and visualization
+ 
+```{r}
+
+counts_eth <- pol_df %>% 
+  group_by(ethnicity, political_party) %>% 
+  tally()
+
+counts_g <- pol_df %>% 
+  group_by(gender, political_party) %>% 
+  tally()
+
+#looking at counts_eth can see there are less than n=15 for most groups by Race/Political party except for white respondents
+
+ggplot(pol_df, aes(x = political_party)) + #for a histogram only give it x values
+  geom_histogram(aes(fill = ethnicity), stat = "count") +
+  scale_fill_brewer(palette = "YlGnBu") +
+  facet_wrap(~ethnicity, scales = "free")
+
+# non-normally distributed responses, extremes on either end point with less in the middle
+# very small sample sizes for NA, highest for white respondents
+# using facet_wrap we can show a lot of info in a few easy ways
+
+ggplot(pol_df, aes(x = political_party)) + #for a histogram only give it x values
+  geom_histogram(aes(fill = gender), stat = "count") +
+  scale_fill_brewer(palette = "YlGnBu") +
+  facet_wrap(~ethnicity, scales = "free")
+
+```
+
+# THESE DATA ARE PRECARIOUS AND N IS TOO SMALL!!! FOR GROUPS
+
+```{r}
+### THIS IS NOT PUBLISHABLE DATA
+
+#Ordinal logistic regression
+pol_model <- polr(political_party ~ age + gender + ethnicity, data = pol_df)
+
+summary(pol_model)
+
+# coeffieicts are log odds and with respect to different factors
+# if log odds co-efficient of 0 that means no effect
+
+exp(coef(pol_model))
+
+###
+
+# Once we'd decided on a model, we can always make predictions uing it:
+
+predictions <- predict(pol_model, type ="probs")
+
+df <- data.frame(pol_df, predictions)
+# view(df)
+```
+"genderMale 0.312954"" an increase in log odds relative to the reference level
+
+as you compare male to female, all else the same....
+
+"ethnicityNative American 1.129312" no level of meaning, only 6 data points out of thousands
+
+"age 1.001290" no effect on data
+baselevel ethnicity = Asian
+
+###2. Principal components analysis (PCA)
+
+Using WorldBank environmental indicators
+
+SEE KEY to check out the data wrangling!
+
+```{r}
+
+wb_10 <- read_csv("wb_10.csv") %>% 
+  select(-X1) %>% 
+  column_to_rownames('code')
+
+wb_pca <- prcomp(wb_10[3:8], scale. = TRUE) #for continuous variables
+
+summary(wb_pca)
+
+ggbiplot(wb_pca, groups = wb_10$region) +
+  geom_text_repel(label = rownames(wb_10), size = 2, segment.size = 0.2) +
+  theme_bw()
+
+# factoextra package (built to help visualize outcomes of ordination methods)
+
+# screeplot:
+
+fviz_screeplot(wb_pca) # how much variance is explained by each of the principal components
+
+# See contributions of variables to different components:
+
+fviz_contrib(wb_pca, choice = "var", axes = 1, top = 6) #if had 100 variables may want to limit to top 10
+
+
+fviz_contrib(wb_pca, choice = "var", axes = 2, top = 6) 
+
+# Biplot (variables + points)
+fviz_pca_biplot(wb_pca,
+                col.var = "cos2",
+                label = "var",
+                repel = TRUE)
+
+
+fviz_pca_biplot(wb_pca,
+                col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             label = "var",
+             repel = TRUE)
+
+```
+shows things that are simliar to each other (Chile, Ecudaor) versus different (USA)
+
+
